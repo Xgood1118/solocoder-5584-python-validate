@@ -30,6 +30,8 @@ MESSAGES = {
         'cross_field_start_before_end': '{start_field} 必须早于 {end_field}',
         'cross_field_fields_equal': '{field1} 必须与 {field2} 一致',
         'cross_field_fields_not_equal': '{field1} 不能与 {field2} 相同',
+        'expression_syntax_error': '表达式语法错误: {detail}',
+        'expression_eval_error': '表达式求值错误: {detail}',
         
         'nested_field_error': '嵌套字段校验失败',
         
@@ -73,6 +75,8 @@ MESSAGES = {
         'cross_field_start_before_end': '{start_field} must be earlier than {end_field}',
         'cross_field_fields_equal': '{field1} must match {field2}',
         'cross_field_fields_not_equal': '{field1} cannot be the same as {field2}',
+        'expression_syntax_error': 'Expression syntax error: {detail}',
+        'expression_eval_error': 'Expression evaluation error: {detail}',
         
         'nested_field_error': 'Nested field validation failed',
         

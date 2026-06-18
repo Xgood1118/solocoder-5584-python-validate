@@ -42,15 +42,13 @@ class BatchValidator:
             return result
 
         def validate_field(field_name: str, field_config: Dict) -> List[ValidationError]:
+            from .core import ValidationEngine
             errors = []
             value = data.get(field_name)
-            validators_config = field_config.get('validators', [])
+            validators_to_run = ValidationEngine.build_field_validators(field_config)
             
-            for validator_config in validators_config:
-                validator_name = validator_config.get('type', '')
-                validator_params = validator_config.get('params', {})
-                
-                from ..validators import ValidatorRegistry
+            from ..validators import ValidatorRegistry
+            for validator_name, validator_params in validators_to_run:
                 validator = ValidatorRegistry.create_validator(validator_name, **validator_params)
                 if validator:
                     field_result = validator.validate(value, field_name, data)

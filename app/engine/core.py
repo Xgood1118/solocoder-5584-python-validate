@@ -149,6 +149,8 @@ class CrossFieldValidator:
         if not self.expression:
             return result
 
+        main_field = self._get_full_field(self.fields[0], prefix) if self.fields else prefix
+
         try:
             variables: Dict[str, Any] = {}
             for field in self.fields:
@@ -159,7 +161,6 @@ class CrossFieldValidator:
             is_valid = SafeExpressionEvaluator.evaluate(self.expression, variables)
             
             if not is_valid:
-                main_field = self._get_full_field(self.fields[0], prefix) if self.fields else prefix
                 result.add_error(ValidationError(
                     field=main_field,
                     message_key=self.message_key,
@@ -169,8 +170,42 @@ class CrossFieldValidator:
                     },
                     actual_value=self.expression
                 ))
-        except Exception:
+
+        except (SyntaxError, ValueError) as e:
+            result.add_error(ValidationError(
+                field=main_field,
+                message_key='expression_syntax_error',
+                message_params={
+                    'field': main_field,
+                    'detail': str(e)
+                },
+                actual_value=self.expression
+            ))
+
+        except NameError as e:
+            result.add_error(ValidationError(
+                field=main_field,
+                message_key='expression_eval_error',
+                message_params={
+                    'field': main_field,
+                    'detail': f'未定义的变量: {e}'
+                },
+                actual_value=self.expression
+            ))
+
+        except (TypeError, IndexError, KeyError, AttributeError) as e:
             pass
+
+        except Exception as e:
+            result.add_error(ValidationError(
+                field=main_field,
+                message_key='expression_eval_error',
+                message_params={
+                    'field': main_field,
+                    'detail': str(e)
+                },
+                actual_value=self.expression
+            ))
 
         return result
 
@@ -208,6 +243,49 @@ class ValidationEngine:
         'date_format': {'type': 'date_format', 'param_map': {'date_format': 'format'}},
     }
 
+    @classmethod
+    def build_field_validators(cls, field_config: Dict) -> List[tuple]:
+        validators_to_run: List[tuple] = []
+
+        validators_config = field_config.get('validators', [])
+        for validator_config in validators_config:
+            validator_name = validator_config.get('type', '')
+            validator_params = validator_config.get('params', {})
+            validators_to_run.append((validator_name, validator_params))
+
+        for constraint_key, mapping in cls._FLAT_CONSTRAINTS.items():
+            if constraint_key in field_config and constraint_key != 'validators':
+                constraint_value = field_config[constraint_key]
+                params: Dict[str, Any] = {}
+                for src_key, dst_key in mapping['param_map'].items():
+                    if src_key in field_config:
+                        params[dst_key] = field_config[src_key]
+                if mapping['type'] == 'required':
+                    if constraint_value:
+                        validators_to_run.append((mapping['type'], params))
+                elif mapping['type'] in ('enum_whitelist', 'enum_blacklist'):
+                    params[mapping['param_map'].get(constraint_key, constraint_key)] = constraint_value
+                    validators_to_run.append((mapping['type'], params))
+                elif mapping['type'] == 'length':
+                    if 'min' not in params and isinstance(constraint_value, (list, tuple)) and len(constraint_value) == 2:
+                        params['min'] = constraint_value[0]
+                        params['max'] = constraint_value[1]
+                    validators_to_run.append((mapping['type'], params))
+                elif mapping['type'] == 'range':
+                    if 'min' not in params and isinstance(constraint_value, (list, tuple)) and len(constraint_value) == 2:
+                        params['min'] = constraint_value[0]
+                        params['max'] = constraint_value[1]
+                    validators_to_run.append((mapping['type'], params))
+                else:
+                    if not params:
+                        if constraint_key in mapping['param_map']:
+                            params[mapping['param_map'][constraint_key]] = constraint_value
+                        else:
+                            params[constraint_key] = constraint_value
+                    validators_to_run.append((mapping['type'], params))
+
+        return validators_to_run
+
     def _validate_fields(self, data: Dict, prefix: str) -> ValidationResult:
         result = ValidationResult()
 
@@ -215,44 +293,7 @@ class ValidationEngine:
             field_path = f"{prefix}.{field_name}" if prefix else field_name
             value = get_nested_value(data, field_name)
 
-            validators_to_run: List[tuple] = []
-
-            validators_config = field_config.get('validators', [])
-            for validator_config in validators_config:
-                validator_name = validator_config.get('type', '')
-                validator_params = validator_config.get('params', {})
-                validators_to_run.append((validator_name, validator_params))
-
-            for constraint_key, mapping in self._FLAT_CONSTRAINTS.items():
-                if constraint_key in field_config and constraint_key != 'validators':
-                    constraint_value = field_config[constraint_key]
-                    params: Dict[str, Any] = {}
-                    for src_key, dst_key in mapping['param_map'].items():
-                        if src_key in field_config:
-                            params[dst_key] = field_config[src_key]
-                    if mapping['type'] == 'required':
-                        if constraint_value:
-                            validators_to_run.append((mapping['type'], params))
-                    elif mapping['type'] in ('enum_whitelist', 'enum_blacklist'):
-                        params[mapping['param_map'].get(constraint_key, constraint_key)] = constraint_value
-                        validators_to_run.append((mapping['type'], params))
-                    elif mapping['type'] == 'length':
-                        if 'min' not in params and isinstance(constraint_value, (list, tuple)) and len(constraint_value) == 2:
-                            params['min'] = constraint_value[0]
-                            params['max'] = constraint_value[1]
-                        validators_to_run.append((mapping['type'], params))
-                    elif mapping['type'] == 'range':
-                        if 'min' not in params and isinstance(constraint_value, (list, tuple)) and len(constraint_value) == 2:
-                            params['min'] = constraint_value[0]
-                            params['max'] = constraint_value[1]
-                        validators_to_run.append((mapping['type'], params))
-                    else:
-                        if not params:
-                            if constraint_key in mapping['param_map']:
-                                params[mapping['param_map'][constraint_key]] = constraint_value
-                            else:
-                                params[constraint_key] = constraint_value
-                        validators_to_run.append((mapping['type'], params))
+            validators_to_run = self.build_field_validators(field_config)
 
             for validator_name, validator_params in validators_to_run:
                 validator = ValidatorRegistry.create_validator(validator_name, **validator_params)
