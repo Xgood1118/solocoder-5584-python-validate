@@ -43,7 +43,16 @@ def create_rule():
     data = request.get_json() or {}
     
     storage = get_rules_storage()
-    rule = storage.create_rule(data)
+    try:
+        rule = storage.create_rule(data)
+    except ValueError as e:
+        if str(e) == 'rule_already_exists':
+            return jsonify({
+                'success': False,
+                'error': get_message('rule_already_exists'),
+                'error_key': 'rule_already_exists'
+            }), 409
+        raise
     
     return jsonify({
         'success': True,
