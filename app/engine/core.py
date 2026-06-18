@@ -193,8 +193,49 @@ class CrossFieldValidator:
                 actual_value=self.expression
             ))
 
-        except (TypeError, IndexError, KeyError, AttributeError) as e:
-            pass
+        except TypeError as e:
+            result.add_error(ValidationError(
+                field=main_field,
+                message_key='expression_eval_error',
+                message_params={
+                    'field': main_field,
+                    'detail': f'类型不匹配: {e}'
+                },
+                actual_value=self.expression
+            ))
+
+        except IndexError as e:
+            result.add_error(ValidationError(
+                field=main_field,
+                message_key='expression_eval_error',
+                message_params={
+                    'field': main_field,
+                    'detail': f'数组越界: {e}'
+                },
+                actual_value=self.expression
+            ))
+
+        except KeyError as e:
+            result.add_error(ValidationError(
+                field=main_field,
+                message_key='expression_eval_error',
+                message_params={
+                    'field': main_field,
+                    'detail': f'字典键不存在: {e}'
+                },
+                actual_value=self.expression
+            ))
+
+        except AttributeError as e:
+            result.add_error(ValidationError(
+                field=main_field,
+                message_key='expression_eval_error',
+                message_params={
+                    'field': main_field,
+                    'detail': f'属性不存在: {e}'
+                },
+                actual_value=self.expression
+            ))
 
         except Exception as e:
             result.add_error(ValidationError(
@@ -267,14 +308,22 @@ class ValidationEngine:
                     params[mapping['param_map'].get(constraint_key, constraint_key)] = constraint_value
                     validators_to_run.append((mapping['type'], params))
                 elif mapping['type'] == 'length':
-                    if 'min' not in params and isinstance(constraint_value, (list, tuple)) and len(constraint_value) == 2:
-                        params['min'] = constraint_value[0]
-                        params['max'] = constraint_value[1]
+                    if 'min' not in params:
+                        if isinstance(constraint_value, (list, tuple)) and len(constraint_value) == 2:
+                            params['min'] = constraint_value[0]
+                            params['max'] = constraint_value[1]
+                        elif isinstance(constraint_value, int):
+                            params['min'] = constraint_value
+                            params['max'] = constraint_value
                     validators_to_run.append((mapping['type'], params))
                 elif mapping['type'] == 'range':
-                    if 'min' not in params and isinstance(constraint_value, (list, tuple)) and len(constraint_value) == 2:
-                        params['min'] = constraint_value[0]
-                        params['max'] = constraint_value[1]
+                    if 'min' not in params:
+                        if isinstance(constraint_value, (list, tuple)) and len(constraint_value) == 2:
+                            params['min'] = constraint_value[0]
+                            params['max'] = constraint_value[1]
+                        elif isinstance(constraint_value, (int, float)):
+                            params['min'] = constraint_value
+                            params['max'] = constraint_value
                     validators_to_run.append((mapping['type'], params))
                 else:
                     if not params:
